@@ -1,166 +1,245 @@
 /*
-		PATCH FRAG TX  (O.Bailey Nov '22)
-		Program to demonstrate the LoRaWAN file fragmentation session that Zelp AWS
-		servers will need to implement.
-
-		This C application runs on a Linux PC or in WSL on Windows, connected to a Zelp datalogger via a USB-UART
-
-		The app creates a patch file consisting of a repeating counting sequence of bytes,
-		along with a header that includes a hash check.
-
-		It then applies the Forward Error Correction algorithm proposed in
-		https://lora-alliance.org/wp-content/uploads/2020/11/fragmented_data_block_transport_v1.0.0.pdf
-
-		The app will then send the fragments over the UART to the device, but with a specified, random
-		packet loss to simulate real world LoRa radio channel conditions.
+* LoRaWAN Fragmentation Encodder/Decoder Demonstration for Embedded with low memory usage
+*
+* O Bailey Nov 2022
+*
+* This demonstrates  the fragmentation encoding (server side) and decoding (device side)
+* for a LoRaWAN file transfer (typically a new firmware  or firmware patch)
+*
+* The original data is a sawtooth pattern counting upwards between 0 to 255.
+*
 */
-#include <stdio.h>
+#include <assert.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <string.h>	
 #include <stdlib.h>
-#include <string.h>
-#include <Windows.h>
-//#include <io.h>
-//#include "sha256.h"
+#include "bit_array.h"
+#include "parity_matrix.h"
+#include "storage.h"
+#include "channel.h"
+#include "encoding.h"
+#include "decoding.h"
+#include "frag_sesh.h"
+#include "constants.h"
 
-typedef struct _patch_file_header_t
-{
-	uint32_t patch_len;
-	uint8_t data_hash[32];
-} patch_file_header_t;
-
-int main(int argc, char* argv[])
-{
-	int ret = -1;
-
-	// TBD: allow user to input a real patch file
-	  //FILE* hsrc = 0, 
-
-	// output the generated patch file to compare to memeory contents of reconstructed patch in device memory
-	FILE* pf_out = 0;
+const int FAIL = -1;
+const int SUCCESS = 0;
 
 
-	uint8_t* p_buf;
-	uint8_t fragment_size;
-	uint8_t packet_delivery_rate;
-	uint16_t pf_len;
-	char portname[32];
-	uint8_t port;
-	HANDLE hport = 0;
+
+int main(int argc, char* argv[]) {
+	int		  i;
+	int		  ret = FAIL;
+	uint16_t  data_length = 0;
+	uint8_t   frag_size = 0;
+	float     coding_rate = 0;
+	uint8_t	  packet_delivery_rate = 0;
+	uint8_t*  patch_data = NULL;
+	uint8_t*  frag = NULL;
+	uint8_t*  FEC_data = NULL;
+	uint16_t  packet_num;
+	frag_sesh_t frag_sesh;
+	frag_sesh_t* fs = &frag_sesh;
+
 
 	// check correct number of arguments
-	if (argc != 6)
+	if (argc != 5)
 	{
 		printf("usage:\n");
-		printf("patch_frag_tx.exe [patch output file] [patch_file_length] \
-					 [fragment size] [packet delivery rate %%] [COM port]\n");
+		printf("patch_frag_tx.exe  [patch_file_length] \
+					 [fragment size] [coding rate] [packet delivery rate %%]\n");
 		goto end;
 	}
 	else { 
-		for (int i = 0; i < argc; i++) {
+		for (i = 0; i < argc; i++) {
 			printf("%s ", argv[i]);
 		}
 		printf("\n\r");
 	}
 
-	// check that patch output file can be opened
-	pf_out = fopen(argv[1], "wb");
-	if (!pf_out)
-	{
-		printf("could not open file for patch output\n");
-		goto end;
-	}
-
+	
 	// check that patch file length format is OK
-	if (1 != sscanf(argv[2], "%hu", &pf_len))
+	if (1 != sscanf_s(argv[1], "%hu", &data_length))
 	{
 		printf("could not parse patch file size\n");
 		goto end;
 	}
 
 	// check that fragment size format is OK
-	if (1 != sscanf(argv[3], "%hhu", &fragment_size))
+	if (1 != sscanf_s(argv[2], "%hhu", &frag_size))
 	{
 		printf("could not parse fragment size\n");
 		goto end;
 	}
 
+	// check that Coding Rate format is OK
+	if (1 != sscanf_s(argv[3], "%f", &coding_rate))
+	{
+		printf("could not parse coding rate\n");
+		goto end;
+	}
+
 	// check that PDR format is OK
-	if (1 != sscanf(argv[4], "%hhu", &packet_delivery_rate))
+	if (1 != sscanf_s(argv[4], "%hhu", &packet_delivery_rate))
 	{
 		printf("could not parse packet delivery rate\n");
 		goto end;
 	}
 
-	// check that COM port format is OK
-	if (1 != sscanf(argv[5], "%hhu", &port))
-	{
-		printf("could not parse COM port\n");
-		goto end;
-	}
-
 	// check limits on patch file size
-	if ((pf_len < 512) | (pf_len > 24576)) {
-		printf("fragment size out of limits [512...24576 bytes]\n\r");
+	if ((data_length < 256) | (data_length > 24576)) {
+		printf("patch file size out of limits [512 to 24576 bytes]\n\r");
 		goto end;
 	}
 
 	// check limits on fragment size
-	if ((fragment_size < 8) | (fragment_size > 48)) {
-		printf("fragment size out of limits [8...48 bytes ]\n\r");
+	if ((frag_size < 8) | (frag_size > 48)) {
+		printf("fragment size out of limits [8 to 48 bytes ]\n\r");
+		goto end;
+	}
+
+	// check limits on coding rate
+	if ((coding_rate < 1.0) | (coding_rate > 2.0)) {
+		printf("coding rate out of limits [1.0to 2.0 ]\n\r");
 		goto end;
 	}
 
 	// check limits of PDR
 	if ((packet_delivery_rate < 33) | (packet_delivery_rate > 100)) {
-		printf("packet delivery rate out of limits [33..100 %%]\n\r");
+		printf("packet delivery rate out of limits [33 to 100 %%]\n\r");
 	}
 
-	// create patch file with simple repeating sawtooth sequence {0..255,0..255...}
-	uint32_t patch_file_size = ((pf_len + 1023) / 1024) * 1024; 	 // align len to 1KB block
-	p_buf = (uint8_t*)malloc(pf_len + sizeof(patch_file_header_t));
-	memset(p_buf, 0, pf_len);
-	if (!p_buf)
-	{
-		printf("could not alloc memory for patch file buffer\n");
+	// Calculate M, N and padding
+	const uint16_t  M = data_length / (uint16_t)frag_size + (data_length % frag_size != 0);
+	const uint16_t  N = (uint16_t)((float)M * coding_rate);
+	uint8_t   num_padding_bytes = M * frag_size - data_length;
+	if (num_padding_bytes == frag_size) {
+		num_padding_bytes = 0;
+	}
+
+
+	// check limits on M and N
+	assert(M <= 512);
+	assert(N <= 1024);
+
+	printf("M: %u N: %u Padding: %u Data length: %u Fragment Size: %u\n\r", \
+		M,N, num_padding_bytes, data_length, frag_size);
+
+	frag_sesh.data_length = data_length;
+	frag_sesh.frag_size = frag_size;
+	frag_sesh.M = M;
+	frag_sesh.N = N;
+	frag_sesh.padding_bytes = num_padding_bytes;
+	frag_sesh.coding_rate = coding_rate;
+
+	// create patch data (with padding)
+	patch_data = (uint8_t*)malloc(sizeof(uint8_t) * M * frag_size);
+	if (check_for_null((void*)patch_data, &ret)) goto end;
+	
+	// initially set the patch data to all zeros
+	memset(patch_data, 0x00, (size_t)(M * frag_size));
+
+	// create the sequence data for the raw "patch file"
+	for (i = 0; i < data_length; i++) {
+		*(patch_data + i) = i & 0xFF;
+	}
+
+	// allocate memory for encoded output data
+	FEC_data = (uint8_t*)malloc(sizeof(uint8_t) * N * frag_size);
+	if (check_for_null((void*)FEC_data, &ret)) goto end;
+
+	memset(FEC_data, 0x00, (size_t)(N* frag_size));
+
+	// encode the patch data, expanding it with redundancy in (N-M) extra fragments
+	encode(patch_data, FEC_data, N, M, frag_size);
+
+	// memory to store a received fragment for processing
+	frag = (uint8_t*) malloc(sizeof(uint8_t) * frag_size);
+	if (check_for_null((void*)frag, &ret)) goto end;
+
+	// create the storage space for the received  and decoded fragments
+	uint8_t* storage_ptr = create_storage(M, frag_size);
+
+	if (init_decoder(storage_ptr, frag_size, M, N) == FAIL) {
+		ret = FAIL;
 		goto end;
 	}
+	
+	// receive the messages (with some getting lost on the way) and decode one-by-one
+	do {
+		// simulate a lossy LoRa radio link
+		packet_num = receive_next_fragment(frag, FEC_data, N, frag_size, packet_delivery_rate);
 
-	// create sequence data
-	// TBD
+		// and pass each received message to the decoder as they arrive
+		decode_fragment(frag, packet_num);
+		
 
-	// apply hash as header, along with length of patch file data
-	/*
-	patch_file_header_t* header = (patch_file_header_t*)p_buf;
-	header->patch_len = pf_len;
+	} while (packet_num < (N-1));
 
-	SHA256_CTX hasher;
-	sha256_init(&hasher);
-	sha256_update(&hasher, buf + sizeof(patch_file_header_t), pf_len);
-	sha256_final(&hasher, header->data_hash);
-
-	if (pf_len + sizeof(patch_file_header_t) != fwrite(p_buf, 1, pf_len + sizeof(patch_file_header_t), pf_out))
-	{
-		printf("could not write to patch output file\n");
-		goto end;
-	}
-
-	// save the patch file
-	fwrite(p_buf, sizeof(uint8_t), sizeof(p_buf), pf_out);
-	*/
-
-	// fragment and apply FEC whilst outputting each fragment on the UART
-
-
-	printf("ok\n");
-	ret = 0;
+	
+	ret = SUCCESS;
 
 end:
-	/*if (hsrc)
-		fclose(hsrc);*/
+	// free up allocated heap memory (it's OK to free a NULL pointer too if it wasn't used...)
+	free_decoder_memory();
+	free(patch_data);
+	free(frag);
+	free(FEC_data);
 
-	if (pf_out)
-		fclose(pf_out);
+
+	// say goodbye
+	printf("\n\rexiting: %i\n\r", ret);
+	
 	return ret;
 }
+
+
+
+
+
+/*	
+// test bit_array_t
+	bit_array_t* b_ptr1 = malloc(sizeof(bit_array_t));
+
+	if (get_bit_array(b_ptr1, M)) {
+		print_bit_array(b_ptr1);
+		set_bit(b_ptr1, 3);
+		set_bit(b_ptr1, 7);
+		set_bit(b_ptr1, 8);
+		set_bit(b_ptr1, M - 1);
+		printf("get_bit: %u\n\r",get_bit(b_ptr1,3));
+		print_bit_array(b_ptr1);
+		printf("No. of ones: %u\n\r", number_of_ones(b_ptr1));
+		clear_all_bits(b_ptr1);
+		print_bit_array(b_ptr1);
+		delete_bit_array(b_ptr1);
+	}
+
+
+	// test C
+	bit_array_t* C_ptr = malloc(sizeof(bit_array_t));
+	if (get_bit_array(C_ptr, M)) {
+		get_matrix_line(0, M, C_ptr);
+		print_bit_array(C_ptr);
+
+		get_matrix_line(M - 1, M, C_ptr);
+		print_bit_array(C_ptr);
+
+		get_matrix_line(M, M, C_ptr);
+		print_bit_array(C_ptr);
+		printf("No. of ones: %u\n\r", number_of_ones(C_ptr));
+
+		get_matrix_line(M + 10, M, C_ptr);
+		print_bit_array(C_ptr);
+		printf("No. of ones: %u\n\r", number_of_ones(C_ptr));
+		delete_bit_array(C_ptr);
+
+	}
+*/
+
+
+
+
 

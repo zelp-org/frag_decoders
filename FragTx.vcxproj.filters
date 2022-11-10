@@ -18,5 +18,52 @@
     <ClCompile Include="main.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="parity_matrix.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="bit_array.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="storage.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="channel.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="encoding.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="decoding.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="frag_sesh.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="parity_matrix.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="bit_array.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="storage.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="channel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="encoding.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="constants.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="decoding.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="frag_sesh.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
