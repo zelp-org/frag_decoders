@@ -9,10 +9,8 @@ typedef struct frag_sesh_t {
 	uint16_t N;
 	uint16_t data_length;
 	uint8_t padding_bytes;
-	double coding_rate;
-
-	// functions
-	void (*calc_padding)(struct frag_sesh_t* fs);
-	void (*calc_coding_rate)(struct frag_sesh_t* fs);
-	void (*calc_N) (struct frag_sesh_t* fs);
+	float coding_rate;
 } frag_sesh_t;
+
+void calc_padding(struct frag_sesh_t* fs);
+void calc_N(struct frag_sesh_t* fs);

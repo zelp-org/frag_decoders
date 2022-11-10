@@ -12,6 +12,7 @@
 #include "parity_matrix.h"	// get_matrix_line
 #include "constants.h"
 
+
 static bit_array_t* uncoded_fragments;
 static bit_array_t C;
 static bit_array_t* C_ptr;

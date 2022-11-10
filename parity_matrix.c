@@ -4,8 +4,6 @@
 #include <assert.h>
 
 
-
-
 uint32_t prbs23(uint32_t x)
 {
 	uint32_t b0, b1;

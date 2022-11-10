@@ -124,12 +124,6 @@ bool get_bit_array(bit_array_t* b, uint16_t numbits) {
     
     b->numBits = numbits;
     b->whole_bytes = ((numbits-1) / 8) + 1;
-    b->bitwise_AND_func = bitwise_AND;
-    b->bitwise_XOR_func = bitwise_XOR;
-    b->clear_all_bits_func = clear_all_bits;
-    b->set_bit_func = set_bit;
-    b->set_bit_func = get_bit;
-    b->index_of_first_one_func = index_of_first_one;
     b->array = malloc(sizeof(uint8_t) * b->whole_bytes);
     if (b->array != NULL) {
         b->array = memset(b->array, 0x00, sizeof(uint8_t) * b->whole_bytes);

@@ -21,12 +21,10 @@
 #include "channel.h"
 #include "encoding.h"
 #include "decoding.h"
-#include "frag_sesh.h"
 #include "constants.h"
 
 const int FAIL = -1;
 const int SUCCESS = 0;
-
 
 
 int main(int argc, char* argv[]) {
@@ -39,9 +37,8 @@ int main(int argc, char* argv[]) {
 	uint8_t*  patch_data = NULL;
 	uint8_t*  frag = NULL;
 	uint8_t*  FEC_data = NULL;
-	uint16_t  packet_num;
-	frag_sesh_t frag_sesh;
-	frag_sesh_t* fs = &frag_sesh;
+	uint16_t  packet_num = 0;
+
 
 
 	// check correct number of arguments
@@ -112,27 +109,19 @@ int main(int argc, char* argv[]) {
 	}
 
 	// Calculate M, N and padding
-	const uint16_t  M = data_length / (uint16_t)frag_size + (data_length % frag_size != 0);
-	const uint16_t  N = (uint16_t)((float)M * coding_rate);
-	uint8_t   num_padding_bytes = M * frag_size - data_length;
-	if (num_padding_bytes == frag_size) {
-		num_padding_bytes = 0;
-	}
+	const uint16_t M = data_length / (uint16_t)frag_size + (data_length % frag_size != 0);
+	const uint16_t N = (uint16_t)((float)M * coding_rate);
+	uint8_t padding_bytes = M * frag_size - data_length;
+	if (padding_bytes == frag_size) padding_bytes = 0;
 
 
 	// check limits on M and N
 	assert(M <= 512);
 	assert(N <= 1024);
 
-	printf("M: %u N: %u Padding: %u Data length: %u Fragment Size: %u\n\r", \
-		M,N, num_padding_bytes, data_length, frag_size);
+	printf("M: %u N: %u Padding: %u Data length: %u Fragment Size: %u\n\r", M, N, padding_bytes, data_length, frag_size);
 
-	frag_sesh.data_length = data_length;
-	frag_sesh.frag_size = frag_size;
-	frag_sesh.M = M;
-	frag_sesh.N = N;
-	frag_sesh.padding_bytes = num_padding_bytes;
-	frag_sesh.coding_rate = coding_rate;
+
 
 	// create patch data (with padding)
 	patch_data = (uint8_t*)malloc(sizeof(uint8_t) * M * frag_size);

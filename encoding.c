@@ -8,7 +8,6 @@
 #include <stdlib.h>    //  malloc(), free()
 
 
-
 void encode(uint8_t* data_in, uint8_t* fec_data_out, uint16_t N, uint16_t M, uint8_t frag_size) {
 	assert(data_in != NULL);
 	assert(fec_data_out != NULL);
