@@ -1,47 +1,65 @@
 #include "encoding.h"
 #include "parity_matrix.h"
 #include "bit_array.h"
+#include "frag_sesh.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>		// memset(), memcpy()
 #include <assert.h>		// assert()
 #include <stdlib.h>    //  malloc(), free()
 
+/* **************************************************************************************
+*										GLOBAL VARS
+*  *************************************************************************************/
+extern frag_sesh_t fs;
+extern uint8_t* storage;
 
-void encode(uint8_t* data_in, uint8_t* fec_data_out, uint16_t N, uint16_t M, uint8_t frag_size) {
+extern bit_array_t* tally_of_rxd_frags;
+extern bit_array_t C;
+extern uint8_t* A;
+
+/* **************************************************************************************
+*										PRIVATE VARS & FUNCS
+*  *************************************************************************************/
+
+
+
+/* **************************************************************************************
+*										PUBLIC FUNCTIONS
+*  *************************************************************************************/
+void encode(uint8_t* data_in, uint8_t* fec_data_out) {
 	assert(data_in != NULL);
 	assert(fec_data_out != NULL);
 
 	uint16_t n,i;
-	bit_array_t* C = malloc(sizeof(bit_array_t));
-	uint8_t* encoded_fragment = (uint8_t*)malloc(sizeof(uint8_t) * frag_size);
-	
+	uint8_t* encoded_fragment = (uint8_t*)malloc(sizeof(uint8_t) * fs.frag_size);
+	printf("encoding\n\r");
 
-	if (get_bit_array(C, M) && encoded_fragment != NULL) {
-		for (n = 0; n < N; n++) {
+	if (get_bit_array(&C, fs.M) && encoded_fragment != NULL) {
+		for (n = 0; n < fs.N; n++) {
 			// fill computed fragment with zeros initially
-			memset(encoded_fragment, 0x00, sizeof(uint8_t) * frag_size);
+			memset(encoded_fragment, 0x00, sizeof(uint8_t) * fs.frag_size);
 			// get the parity matrix row for fragment n
-			get_matrix_line(n, M, C);
-			print_bit_array(C);
+			get_matrix_line(n, fs.M, &C);
+			print_bit_array(&C);
 
-			for (i = 0; i < M; i++) {
+			for (i = 0; i < fs.M; i++) {
 				// if fragment 'i' is used to build up this encoded fragment...
-				if (get_bit(C, i)) {
+				if (get_bit(&C, i)) {
 					//printf("gb: %u n: %u ", i,n);
 					// then "add" it to the mix with an XOR
-					bitwise_array_XOR(encoded_fragment, data_in + sizeof(uint8_t) * i * frag_size, frag_size);
+					bitwise_array_XOR(encoded_fragment, \
+						data_in + sizeof(uint8_t) * i * fs.frag_size, fs.frag_size);
 				}
 			}
 
 			// transfer to output data for fragment location 'n'
-			memcpy(fec_data_out + sizeof(uint8_t) * n * frag_size, encoded_fragment, sizeof(uint8_t) * frag_size);
+			memcpy(fec_data_out + sizeof(uint8_t) * n * fs.frag_size, \
+				encoded_fragment, sizeof(uint8_t) * fs.frag_size);
 		}
 	}
 	
 	// release mallocated memory
-	//free(C);
-	delete_bit_array(C);
 	free(encoded_fragment);
 
 	return;

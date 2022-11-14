@@ -143,6 +143,7 @@
   <ItemGroup>
     <ClCompile Include="bit_array.c" />
     <ClCompile Include="channel.c" />
+    <ClCompile Include="check_arguments.c" />
     <ClCompile Include="decoding.c" />
     <ClCompile Include="encoding.c" />
     <ClCompile Include="frag_sesh.c" />
@@ -153,6 +154,7 @@
   <ItemGroup>
     <ClInclude Include="bit_array.h" />
     <ClInclude Include="channel.h" />
+    <ClInclude Include="check_arguments.h" />
     <ClInclude Include="constants.h" />
     <ClInclude Include="decoding.h" />
     <ClInclude Include="encoding.h" />

@@ -11,116 +11,128 @@
 #include "storage.h"		// store_fragment
 #include "parity_matrix.h"	// get_matrix_line
 #include "constants.h"
+#include "frag_sesh.h"
 
+/* **************************************************************************************
+*										GLOBAL VARS
+*  *************************************************************************************/
+extern frag_sesh_t fs;
+extern uint8_t* storage;
 
-static bit_array_t* uncoded_fragments;
-static bit_array_t C;
-static bit_array_t* C_ptr;
-static uint8_t* A;
-static uint16_t _frag_size;
-static uint16_t _M;
-static uint16_t _N;
-static uint8_t* _storage;
+extern bit_array_t* tally_of_rxd_frags;
+extern bit_array_t C;
+extern uint8_t* A;
 
+/* **************************************************************************************
+*										PRIVATE VARS & FUNCS
+*  *************************************************************************************/
 static void XOR_bytes_with_bit_array(bit_array_t* X, uint8_t* Y);
 static void copy_C_to_A_at_row(bit_array_t* C, uint8_t* A, uint16_t j);
 
 
-int init_decoder(uint8_t* storage, uint16_t frag_size, uint16_t M, uint16_t N) {
+/* **************************************************************************************
+*										PUBLIC FUNCTIONS
+*  *************************************************************************************/
+int init_decoder() {
 	assert(storage != NULL);
 
 	// fragments to be received up to packet_num=(M-1) are uncoded, so 
 	// just note down if they were received in a bit array
-    uncoded_fragments = (bit_array_t*)malloc(sizeof(bit_array_t));
-	if (!get_bit_array(uncoded_fragments, M)) {
+    tally_of_rxd_frags = (bit_array_t*)malloc(sizeof(bit_array_t));
+	if (!get_bit_array(tally_of_rxd_frags, fs.M)) {
 		return FAIL ;
 	}
 
 	// get a bit array to hold a parity matrix line C
-	bit_array_t* C_ptr = &C;
-	if (!get_bit_array(C_ptr, M)) {
+	if (!get_bit_array(&C, fs.M)) {
 		return FAIL;
 	}
 
-
-
 	// TEMPORARY: Use byte matrix for A (massive memory usage for large M!!!)
-	A = malloc(sizeof(uint8_t) * M * M);
+	A = malloc(sizeof(uint8_t) * fs.M * fs.M);
 	if (A == NULL) return FAIL;
-	memset(A, 0x00, (size_t)(M * M));
-
-	_frag_size = frag_size;
-	_M = M;
-	_N = N;
-	_storage = storage;
+	memset(A, 0x00, (size_t)(fs.M * fs.M));
 
 	return SUCCESS;
-}
-
-void free_decoder_memory(void) {
-	free(A);
-	free(C_ptr);
-	free(uncoded_fragments);
-
-	return;
 }
 
 
 
 void decode_fragment(uint8_t* frag, uint16_t packet_num) {
 	assert(frag != NULL);
-	uint16_t i,j;
+	uint16_t i, j;
 
-	printf("ahem...");
-	print_bit_array(C_ptr);
-	printf("excuse me...");
-	printf("%u\n\r", number_of_ones(C_ptr));
+	// not sure why I need to do this...
+	packet_num = packet_num - 1;
+
 	// process each received packet one by one, based on its number
-	if (packet_num < _M) {
+	if (packet_num <= fs.M) {
 		// mark this uncoded packet as received
-		set_bit(uncoded_fragments, packet_num);
+		set_bit(tally_of_rxd_frags, packet_num);
+		// set identity diagonal of A for this packet
+		*(A + sizeof(uint8_t) * fs.M * packet_num) = 0x01;
+
 		// store it to the right place in the store
-		store_fragment(packet_num, _frag_size, frag, _storage);
-		printf("stored uncoded fragment: %u\n\r", packet_num);
+		store_fragment(packet_num, frag);
+		//printf("stored uncoded fragment: %u\n\r", packet_num);
 	}
 	else {
 		// for encoded fragments with packet number > M, get its corresponding parity matrix line
-		get_matrix_line(packet_num, _M, C_ptr);
+		get_matrix_line(packet_num, fs.M, &C);
+		print_bit_array(&C);
 
-		for (i = 0; i < _M; i++) {
+		for (i = 0; i < fs.M; i++) {
 			// for each 1 in C in position i...
-			if (get_bit(C_ptr, i)) {
+			if (get_bit(&C, i)) {
 				// check if row i of A contains one or more 1s
-				if (number_of_ones(uncoded_fragments) >= 1) {
+				if (get_bit(tally_of_rxd_frags, i)) {
+					printf(" t: %u " , i);
+					
 					// if yes, XOR line A(i,) with C and store back to C
-					XOR_bytes_with_bit_array(C_ptr, A + sizeof(uint8_t) * i * _M);
+					XOR_bytes_with_bit_array(&C, A + sizeof(uint8_t) * i * fs.M);
 
 					// and also XOR frag with S(i) and store back to frag
-					bitwise_array_XOR(frag, _storage + sizeof(uint8_t) * i * _frag_size, _frag_size);
+					bitwise_array_XOR(frag, storage + sizeof(uint8_t) * i * fs.frag_size, fs.frag_size);
 				}
 			}
 		}
+
+
+		// now either C is all zeros, which means fragment has no useful info, so skip
+		if (number_of_ones(&C) == 0) {
+			printf("C is null - frag has no useful XORd info - discarding\n\r");
+			return;
+			
+		}
+
+
+		// or C is non-null so write C to row j in A, where j is the index of the
+		// first non-zero element in C
+		j = index_of_first_one(&C);
+		printf(" J: %u ", j);
+		print_bit_array(&C);
+		printf("index of first one in C: %u\n\r", j);
+		copy_C_to_A_at_row(&C, A, j);
+
+		// and also add the XOR-modified fragment to the S at position j
+		memcpy(frag, storage + sizeof(uint8_t) * j * fs.frag_size, fs.frag_size);
 	}
+}
 
-	// now either C is all zeros, which means fragment has no useful info, so skip
-	printf("here1 ");
-	print_bit_array(C_ptr);
-	printf("here2 ");
-	if (number_of_ones(C_ptr) == 0) {
-		printf("here3 ");
-		return;
+void final_step() {
+	uint16_t i, j;
+	// starting from matrix line i = (M - 1) down to 1, fetch the(i)th line of A.
+	// the line A(i) has a one at position i, and some beyond, but only zeros to the left.
+	// for any 1 at position j > i, XOR S(i) with S(j) and update S(i) with the result
+	for (i = (fs.M - 1); i > 0; i--) {
+		for (j = i + 1; j < fs.M; j++) {
+			printf("i: %u, j: %u A[i,j]: %u\n\r", i, j,*(A + sizeof(uint8_t) * i * fs.M + j) );
+			if (*(A + sizeof(uint8_t) * i * fs.frag_size + i) = 0x01) {
+				//bitwise_array_XOR(storage + sizeof(uint8_t) * fs.frag_size * j, \
+					storage + sizeof(uint8_t) * fs.frag_size * j, fs.frag_size);
+			}
+		}
 	}
-	
-
-	// or C is non-null so write C to row j in A, where j is the index of the
-	// first non-zero element in C
-	j = index_of_first_one(C_ptr);
-	copy_C_to_A_at_row(C_ptr, A, j);
-
-	// and also add the XOR-modified fragment to the S at position i
-	memcpy(frag, _storage + sizeof(uint8_t) * i * _frag_size, _frag_size);
-
-	// and repeat till all rows of A have been updated(???)
 }
 
 static void XOR_bytes_with_bit_array(bit_array_t* X, uint8_t* Y) {
@@ -143,7 +155,7 @@ static void XOR_bytes_with_bit_array(bit_array_t* X, uint8_t* Y) {
 	return;
 }
 
-static void copy_C_to_A_at_row(bit_array_t* C, uint8_t* A, uint16_t j) {
+static void copy_C_to_A_at_row(bit_array_t* C, uint8_t * A, uint16_t j) {
 	uint16_t i;
 
 	for (i = 0; i < C->numBits; i++) {
@@ -154,3 +166,22 @@ static void copy_C_to_A_at_row(bit_array_t* C, uint8_t* A, uint16_t j) {
 
 	return;
 }
+
+bool is_decoded_same_as_original(uint8_t* patch_data) {
+	uint16_t i = 0;
+	uint8_t X, Y;
+
+	// Does not include padding bytes in comparison
+	while (i < fs.data_length) {
+		X = *(patch_data + sizeof(uint8_t) * i);
+		Y = *(storage + sizeof(uint8_t) * i);
+
+		if (X != Y) {		
+			//printf("i: %u X: %1.2x Y: %1.2x\n\r ",i, X, Y);
+			return false;
+		}
+		i++;
+	}
+	return true;
+}
+ 

@@ -39,6 +39,9 @@
     <ClCompile Include="frag_sesh.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="check_arguments.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="parity_matrix.h">
@@ -63,6 +66,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="frag_sesh.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="check_arguments.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

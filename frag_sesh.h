@@ -4,7 +4,7 @@
 
 typedef struct frag_sesh_t {
 	// data
-	uint16_t frag_size;
+	uint8_t frag_size;
 	uint16_t M;
 	uint16_t N;
 	uint16_t data_length;
@@ -14,3 +14,4 @@ typedef struct frag_sesh_t {
 
 void calc_padding(struct frag_sesh_t* fs);
 void calc_N(struct frag_sesh_t* fs);
+void print_session(void);
