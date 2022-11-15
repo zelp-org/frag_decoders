@@ -23,6 +23,7 @@ extern bit_array_t A;
 extern bit_array_t B;
 extern bit_array_t C;
 extern bit_array_t R;
+extern bit_array_t S;
 
 /* **************************************************************************************
 *										PRIVATE VARS & FUNCS
@@ -58,6 +59,11 @@ int init_decoder() {
 		return FAIL;
 	}
 
+	// get a bit array to hold indices of coded fragments we received
+	if (!get_bit_array(&S, fs.M-fs.N)) {
+		return FAIL;
+	}
+
 	return SUCCESS;
 }
 
@@ -65,7 +71,7 @@ int init_decoder() {
 
 int decode_fragment(uint8_t* frag, uint16_t packet_num) {
 	assert(frag != NULL);
-	uint16_t i, j, missing_index, num_frags_already_got;
+	uint16_t i, j, k, missing_index, num_frags_already_got;
 
 	// not sure why I need to do this...
 	packet_num = packet_num - 1;
@@ -80,8 +86,10 @@ int decode_fragment(uint8_t* frag, uint16_t packet_num) {
 		TRACE("stored uncoded fragment: %u\n\r", packet_num);
 	}
 	else {
+		// mark this coded packet as received
+		set_bit(&S, packet_num - fs.M);
 		// for encoded fragments with packet number > M, get its corresponding parity matrix line
-		get_matrix_line(packet_num, fs.M, &C, PARITY_LINE_FRACTION);
+		get_matrix_line(packet_num, fs.M, &C, fs.parity_fraction);
 		print_bit_array(&C);
 
 		// create B = C AND R, the indices of fragment in store , and that are required for this current frag
@@ -101,7 +109,7 @@ int decode_fragment(uint8_t* frag, uint16_t packet_num) {
 			missing_index = index_of_first_one(&A);
 			num_frags_already_got = number_of_ones(&B);
 			TRACE("index in A: %u ", missing_index);
-			
+
 			for (i = 0; i < num_frags_already_got; i++) {
 				// get index of next fragment to XOR in B
 				j = index_of_first_one(&B);
@@ -113,23 +121,32 @@ int decode_fragment(uint8_t* frag, uint16_t packet_num) {
 					bitwise_array_XOR(frag, fetch_fragment(j), fs.frag_size);
 					TRACE("iB: %u ", j);
 				}
-				
+
 			}
 			TRACE("\n\r");
 			// and store this reconstructed fragment 
 			store_fragment(missing_index, frag);
 			// and also mark in R as received and reconstructed
 			set_bit(&R, missing_index);
-			TRACE("reconstructed missing fragment: %u\n\r", missing_index);
+			TRACE("<<<<<\treconstructed missing fragment: %u\n\r", missing_index);
 		}
+		else if (number_of_ones(&A) > 1) {
+			TRACE("coded fragment: %u has %u uncoded fragments missing - too many to reconstruct\n\r", \
+				packet_num, number_of_ones(&A));
+		}
+		else if (number_of_ones(&A) == 0) {
+			TRACE("coded fragment: %u has no uncoded fragments missing, so discarding\n\r", \
+				packet_num);
 
+		}
+		// if R is now all ones we are done, otherwise wait (with timeout) for more fragments 
+		// that might never come!!!
+		if (number_of_ones(&R) == fs.M) {
+			TRACE("\n\r**** Decoding completed OK! ****\n\r");
+			return DECODING_COMPLETE;
+		}
 	}
-	// if R is now all ones we are done, otherwise wait (with timeout) for more fragments 
-	// that might never come!!!
-	if (number_of_ones(&R) == fs.M) {
-		TRACE("\n\r**** Decoding completed OK! ****\n\r");
-		return DECODING_COMPLETE;
-	}
+
 	return DECODING_NOT_YET_COMPLETE;
 }
 

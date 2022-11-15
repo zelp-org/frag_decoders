@@ -19,8 +19,8 @@ extern uint8_t* storage;
 /* **************************************************************************************
 *										PUBLIC FUNCTIONS
 *  *************************************************************************************/
-void create_storage() {
-	storage =  (uint8_t*)malloc((fs.M * (uint16_t)fs.frag_size) * sizeof(uint8_t));
+void create_storage(uint16_t num_bytes) {
+	storage =  (uint8_t*)malloc( num_bytes * sizeof(uint8_t));
 	memset(storage, 0x00, sizeof(uint8_t) * fs.M * fs.frag_size);
 }
 

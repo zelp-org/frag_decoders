@@ -20,22 +20,25 @@
 /*
 * LoRaWAN Fragmentation Encodder/Decoder Demonstration for Embedded with low memory usage
 *
-* O Bailey Nov 2022
-*
+* O Bailey Nov 2022 
+* 
+* 
+* ************************* MULTI-PASS ALGORITHM VERSION *********************************
+* 
 * This demonstrates  the fragmentation encoding (server side) and decoding (device side)
 * for a LoRaWAN file transfer (typically a new firmware  or firmware patch)
 *
 * The original data is a sawtooth pattern counting upwards between 0 to 255.
 * 
 * COMMAND LINE ARGUMENTS:
-* ./patch_frag_tx.exe  [patch_file_length]  [fragment_size] [coding_rate] [packet_delivery_rate]
+* ./patch_frag_tx.exe  [patch_file_length]  [fragment_size] [coding_rate] [packet_delivery_rate] [verbose]
 * 
 * where:
 * patch_file_length is the length in bytes of the raw patch file to be fragmented &  forward error corrected
 * fragment_size is the size in bytes for each downlink fragment. Typically limited to 48 bytes
 * coding_rate is the ratio of extra redundant information
 * packet_delivery_rate is  the percentage of fragments successfully received on the downlink (max. 100%)
-*
+* verbose = 0 little info spewed out, 1 = full info spewed out
 * 
 * OPERATION OF THE FRAMENTATION PROCESS:
 * 
@@ -55,12 +58,12 @@
 * 7. Some fragments are randomly lost due to noise, interference, collisions etc. 
 * 
 *  'DEVICE'
-* 8. The device prepares storage memory (S) large enough to hold the all uncoded fragments 
+* 8. The device prepares storage memory (S) large enough to hold the all uncoded *AND* coded fragments 
      and sets all memory to zero.
 * 9. The device receives (packet_delivery_rate/100)*N fragments. If the number of lost fragments
 *    is reasonably less than the extra redundancy added, we are likely to be able to recover the original
 *    patch file.
-* 10. The device receives all or some (uncoded) fragments 1 thru M, making a note of which fragment numbers 
+* 10. The device receives all or some fragments 1 thru M, making a note of which fragment numbers 
 *    were received in R, and storing the fragments in order in storage memory S
 * 11. If all M fragments are received, the process can stop, since the original data is now fully known.
 * 12. If some of the M fragments are not received, the device must then receive the (N-M) coded fragments
@@ -83,11 +86,6 @@
 * 
 
 */
-
-
-
-
-
 const int FAIL = -1;
 const int SUCCESS = 0;
 const int VERBOSE = 1;
@@ -96,7 +94,6 @@ const int QUIET = 2;
 const int DECODING_COMPLETE = 3;
 const int DECODING_NOT_YET_COMPLETE = 4;
 
-const int PARITY_LINE_FRACTION = 4;
 bool      trace_on = false;
 
 /* **************************************************************************************
@@ -110,6 +107,7 @@ bit_array_t A = { 0 };	// indices of missing, but required fragment(s) for the c
 bit_array_t B = { 0 };	// indices of received & required fragment(s) for the current coded fragment
 bit_array_t C = { 0 };  // indices of all required fragment(s) for the current coded fragment
 bit_array_t R = { 0 };	// indices of uncoded fragments received/reconstructed so far
+bit_array_t S = { 0 };	// indices of coded fragments received/reconstructed so far
 
 
 
@@ -117,7 +115,7 @@ bit_array_t R = { 0 };	// indices of uncoded fragments received/reconstructed so
 *											MAIN 
 *  *************************************************************************************/ 
 int main(int argc, char* argv[]) {
-	int		  i,j;
+	int		  i,j,k;
 	int		  ret = FAIL;
 	
 	uint8_t*  patch_data = NULL;
@@ -165,7 +163,7 @@ int main(int argc, char* argv[]) {
 	if (check_for_null((void*)frag, &ret)) goto end;
 
 	// create the storage space for the received  and decoded fragments
-	create_storage();
+	create_storage(fs.data_length * MAX(fs.passes,2));
 
 
 	// prepare local vars in the decoder
@@ -178,9 +176,11 @@ int main(int argc, char* argv[]) {
 			
 		// and pass each received message to the decoder as they arrive
 		decoding_state = decode_fragment(frag, packet_num);
+
 		max_loops++;
 	} 
-	// print out storage
+
+	// print out storage afer first pass
 	TRACE("\n\rStored Fragments:\n\r");
 	for (i = 0; i < fs.M; i++) {
 		frag = fetch_fragment(i);
@@ -190,6 +190,38 @@ int main(int argc, char* argv[]) {
 		TRACE("\n\r");
 	}
 
+	if (decoding_state == DECODING_COMPLETE) goto skip_further_passes;
+
+	// perform extra passes on the stored fragments once received
+	i = 1;
+	while (i < fs.passes && decoding_state == DECODING_NOT_YET_COMPLETE) {
+		TRACE("\n\r*****  PASS No. %u ******\n\r", i + 1);
+		// increment pass counter
+		i++;
+
+		// for each coded fragment, reprocess it to see if we can reconstruct further
+		// uncoded fragments
+		for (j = 0; j < number_of_ones(&S); j++) {
+			k = index_of_first_one(&S);
+			clear_bit(&S, k);
+			if (k > 0) {
+				decoding_state = decode_fragment(fetch_fragment(k + fs.M), k + fs.M);
+			}
+			
+		}	
+	}
+	// print out storage after subsequent pass(es)
+	TRACE("\n\rStored Fragments:\n\r");
+	for (i = 0; i < fs.M; i++) {
+		frag = fetch_fragment(i);
+		for (j = 0; j < fs.frag_size; j++) {
+			TRACE("%1.2x ", *(frag + j));
+		}
+		TRACE("\n\r");
+	}
+
+
+skip_further_passes:
 
 	// compare the received fragments (1..M) with the original data!
 	if (is_decoded_same_as_original(patch_data) == true) {

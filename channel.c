@@ -58,7 +58,7 @@ next_packet:
 	}
 	else {
 		// packet was lost, so skip to the next packet, if there are still more
-		TRACE("packet lost: %u\n\r", packet_count);
+		TRACE(">>>>>\tpacket lost: %u\n\r", packet_count);
 		packet_count += 1;
 		if (packet_count < fs.N)
 			goto next_packet;

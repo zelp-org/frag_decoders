@@ -1,6 +1,7 @@
 #include "check_arguments.h"
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include "frag_sesh.h"
 #include "constants.h"
 #include <assert.h>
@@ -23,19 +24,22 @@ extern int QUIET;
 int check_arguments(int argc, char* argv[]) {
 	int ret = FAIL;
 	int i;
-	uint8_t verbose = 0;
+	char verbose[] = "";
 
 	// check correct number of arguments
-	if (argc != 6)
+	if (argc != 7 &&  argc!= 8)
 	{
 		printf("usage:\n");
 		printf("patch_frag_tx.exe  [patch_file_length] \
-[fragment size] [coding rate] [packet delivery rate %%] [verbose 0/1]\n");
+[fragment size] [coding rate] [packet delivery rate %%] \
+ [passes] [parity fraction] <verbose>\n");
 		printf("\n\rwhere:\n\r \tpatch_file_length\tin bytes\n\r");
 		printf("\tfragment_size\t\tbetween 8 and 48 bytes\n\r");
 		printf("\tcoding_rate\t\tbetween 1.0 and 2.0 times\n\r");
 		printf("\tpacket_delivery_rate\tbetween 33 and 100%%\n\r");
-		printf("\tverbose\t\t\t0 = little output, 1 = lots of output\n\r");
+		printf("\tpasses\t\t\tnumber of passes through the data {1,2,3}\n\r");
+		printf("\tparity fraction\t\t\tfraction of matrix line to contain fragments {2 to 8} \n\r");
+		printf("\t<verbose>\t\tv = lots of debug output\n\r");
 		return ret;
 	}
 	else {
@@ -74,10 +78,24 @@ int check_arguments(int argc, char* argv[]) {
 		return ret;
 	}
 
-	// check that Verbose command format is OK
-	if (1 != sscanf_s(argv[5], "%hhu", &verbose))
+	// check that passes format is OK
+	if (1 != sscanf_s(argv[5], "%hhu", &fs.passes))
 	{
-		printf("could not parse packet delivery rate\n");
+		printf("could not parse number of passes\n");
+		return ret;
+	}
+
+	// check that parity fraction format is OK
+	if (1 != sscanf_s(argv[6], "%hhu", &fs.parity_fraction))
+	{
+		printf("could not parse parity fraction\n");
+		return ret;
+	}
+	 
+	// check that Verbose command format is OK
+	if ( (argc == 8) && (1 != sscanf_s(argv[7], "%s", verbose)))
+	{
+		printf("could not parse optional verbose switch (v)\n");
 		return ret;
 	}
 
@@ -104,6 +122,11 @@ int check_arguments(int argc, char* argv[]) {
 		printf("packet delivery rate out of limits [33 to 100 %%]\n\r");
 	}
 
+	// check limits on number of passes
+	if ((fs.passes < 1) | (fs.passes > 3)) {
+		printf("number of passes out of limits [1 to 3]\n\r");
+	}
+
 	// Calculate M, N and padding
 	fs.M = fs.data_length / (uint16_t)fs.frag_size + (fs.data_length % fs.frag_size != 0);
 	fs.N = (uint16_t)((float)fs.M * fs.coding_rate);
@@ -116,12 +139,13 @@ int check_arguments(int argc, char* argv[]) {
 	assert(fs.M <= 512);
 	assert(fs.N <= 1024);
 
+	print_session();
 
-	print_session(&fs);
-	
-	if (verbose >= 1)
+	if (strcmp(verbose,"v")==0) {
 		ret = VERBOSE;
-	else
+	}
+	else {
 		ret = QUIET;
+	}
 	return ret;
 }

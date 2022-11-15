@@ -11,6 +11,8 @@ typedef struct frag_sesh_t {
 	uint8_t padding_bytes;
 	float coding_rate;
 	uint8_t pdr;
+	uint8_t passes;
+	uint8_t parity_fraction;
 } frag_sesh_t;
 
 void calc_padding(struct frag_sesh_t* fs);

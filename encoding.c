@@ -40,7 +40,7 @@ void encode(uint8_t* data_in, uint8_t* fec_data_out) {
 			// fill computed fragment with zeros initially
 			memset(encoded_fragment, 0x00, sizeof(uint8_t) * fs.frag_size);
 			// get the parity matrix row for fragment n
-			get_matrix_line(n, fs.M, &C, PARITY_LINE_FRACTION);
+			get_matrix_line(n, fs.M, &C, fs.parity_fraction);
 			print_bit_array(&C);
 
 			for (i = 0; i < fs.M; i++) {
