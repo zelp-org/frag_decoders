@@ -1,4 +1,5 @@
 #include "bit_array.h"
+#include "constants.h"
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -39,6 +40,18 @@ bool get_bit(bit_array_t* bitarray, uint16_t bitNum) {
         return true;
     else 
         return false;
+}
+
+void clear_bit(bit_array_t* bitarray, uint16_t bitNum) {
+    assert(bitarray != NULL);
+
+    // which byte and bit position in that byte is this bit to set?
+    if (bitNum >= bitarray->numBits) return;
+    uint8_t byte_num = bitNum / 8;
+    uint8_t bit_position = bitNum % 8;
+    uint8_t bit_mask = 0x80 >> bit_position;
+    // clear bit number 'bitNum' in the bit array
+    *(bitarray->array + byte_num) = *(bitarray->array + byte_num) & ~((uint8_t)(0xFF) & bit_mask);
 }
 
 void bitwise_XOR(bit_array_t* this_array, bit_array_t* other_array) {
@@ -132,12 +145,23 @@ bool get_bit_array(bit_array_t* b, uint16_t numbits) {
     return false;  
 }
 
-void delete_bit_array(bit_array_t* bitarray) {
+// make a deep copy of a bit array
+void copy_bit_array(bit_array_t * src, bit_array_t* dest) {
+    dest->numBits = src->numBits;
+    dest->whole_bytes = src->whole_bytes;
+    memcpy(dest->array, src->array, dest->whole_bytes);
+
+    return;
+}
+
+void free_bit_array(bit_array_t* bitarray) {
     assert(bitarray != NULL);
 
     // free up the memory used by this bit array
     free(bitarray->array);
     free(bitarray);
+
+    return;
 }
 
  // print array
@@ -147,7 +171,9 @@ void delete_bit_array(bit_array_t* bitarray) {
      int i;
 
      for (i = 0; i < b->whole_bytes; i++) {
-         printf("0x%02x ", *(b->array + sizeof(uint8_t) * i));
+         TRACE("0x%02x ", *(b->array + sizeof(uint8_t) * i));
      }
-     printf("\n\r");
+     TRACE("\n\r");
+
+     return;
  }

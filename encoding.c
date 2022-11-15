@@ -2,6 +2,7 @@
 #include "parity_matrix.h"
 #include "bit_array.h"
 #include "frag_sesh.h"
+#include "constants.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>		// memset(), memcpy()
@@ -14,9 +15,8 @@
 extern frag_sesh_t fs;
 extern uint8_t* storage;
 
-extern bit_array_t* tally_of_rxd_frags;
 extern bit_array_t C;
-extern uint8_t* A;
+
 
 /* **************************************************************************************
 *										PRIVATE VARS & FUNCS
@@ -33,14 +33,14 @@ void encode(uint8_t* data_in, uint8_t* fec_data_out) {
 
 	uint16_t n,i;
 	uint8_t* encoded_fragment = (uint8_t*)malloc(sizeof(uint8_t) * fs.frag_size);
-	printf("encoding\n\r");
+	TRACE("encoding\n\r");
 
 	if (get_bit_array(&C, fs.M) && encoded_fragment != NULL) {
 		for (n = 0; n < fs.N; n++) {
 			// fill computed fragment with zeros initially
 			memset(encoded_fragment, 0x00, sizeof(uint8_t) * fs.frag_size);
 			// get the parity matrix row for fragment n
-			get_matrix_line(n, fs.M, &C);
+			get_matrix_line(n, fs.M, &C, PARITY_LINE_FRACTION);
 			print_bit_array(&C);
 
 			for (i = 0; i < fs.M; i++) {

@@ -11,7 +11,10 @@
 *										GLOBAL VARS
 *  *************************************************************************************/
 extern frag_sesh_t fs;
-extern packet_delivery_rate;
+extern uint8_t packet_delivery_rate;
+extern int VERBOSE;
+extern int QUIET;
+
 
 
 /* **************************************************************************************
@@ -20,13 +23,19 @@ extern packet_delivery_rate;
 int check_arguments(int argc, char* argv[]) {
 	int ret = FAIL;
 	int i;
+	uint8_t verbose = 0;
 
 	// check correct number of arguments
-	if (argc != 5)
+	if (argc != 6)
 	{
 		printf("usage:\n");
 		printf("patch_frag_tx.exe  [patch_file_length] \
-					 [fragment size] [coding rate] [packet delivery rate %%]\n");
+[fragment size] [coding rate] [packet delivery rate %%] [verbose 0/1]\n");
+		printf("\n\rwhere:\n\r \tpatch_file_length\tin bytes\n\r");
+		printf("\tfragment_size\t\tbetween 8 and 48 bytes\n\r");
+		printf("\tcoding_rate\t\tbetween 1.0 and 2.0 times\n\r");
+		printf("\tpacket_delivery_rate\tbetween 33 and 100%%\n\r");
+		printf("\tverbose\t\t\t0 = little output, 1 = lots of output\n\r");
 		return ret;
 	}
 	else {
@@ -59,7 +68,14 @@ int check_arguments(int argc, char* argv[]) {
 	}
 
 	// check that PDR format is OK
-	if (1 != sscanf_s(argv[4], "%u", &packet_delivery_rate))
+	if (1 != sscanf_s(argv[4], "%hhu", &packet_delivery_rate))
+	{
+		printf("could not parse packet delivery rate\n");
+		return ret;
+	}
+
+	// check that Verbose command format is OK
+	if (1 != sscanf_s(argv[5], "%hhu", &verbose))
 	{
 		printf("could not parse packet delivery rate\n");
 		return ret;
@@ -93,14 +109,19 @@ int check_arguments(int argc, char* argv[]) {
 	fs.N = (uint16_t)((float)fs.M * fs.coding_rate);
 	fs.padding_bytes = fs.M * fs.frag_size - fs.data_length;
 	if (fs.padding_bytes == fs.frag_size) fs.padding_bytes = 0;
+	fs.pdr = packet_delivery_rate;
 
 
 	// check limits on M and N
 	assert(fs.M <= 512);
 	assert(fs.N <= 1024);
 
-	print_session(&fs);
 
-	ret = SUCCESS;
+	print_session(&fs);
+	
+	if (verbose >= 1)
+		ret = VERBOSE;
+	else
+		ret = QUIET;
 	return ret;
 }

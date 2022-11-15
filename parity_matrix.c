@@ -13,8 +13,9 @@ uint32_t prbs23(uint32_t x)
 }
 
 
-void get_matrix_line(uint16_t n, uint16_t M, bit_array_t* C) {
+void get_matrix_line(uint16_t n, uint16_t M, bit_array_t* C, uint8_t fraction) {
 	assert(C != NULL);
+	assert(fraction > 1 && fraction < 8);
 
 	// clear all bits to start with
 	clear_all_bits(C);
@@ -33,7 +34,7 @@ void get_matrix_line(uint16_t n, uint16_t M, bit_array_t* C) {
 	uint16_t numOnes = 0, rand_bit, max_loops=0;
 	uint32_t next_seed;
 
-	while (numOnes < (M / 2) && max_loops++ < M) {
+	while (numOnes < (M / fraction) && max_loops++ < M) {
 		next_seed = prbs23(new_seed);
 		rand_bit = prbs23(next_seed) % M;
 		new_seed = next_seed;

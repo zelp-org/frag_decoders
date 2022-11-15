@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>	
 #include <stdlib.h>
+#include <stdbool.h>
 #include "bit_array.h"
 #include "parity_matrix.h"
 #include "storage.h"
@@ -54,53 +55,89 @@
 * 7. Some fragments are randomly lost due to noise, interference, collisions etc. 
 * 
 *  'DEVICE'
-* 8. The device prepares storage memory (S) large enough to hold the patch file and sets all memory to zero.
+* 8. The device prepares storage memory (S) large enough to hold the all uncoded fragments 
+     and sets all memory to zero.
 * 9. The device receives (packet_delivery_rate/100)*N fragments. If the number of lost fragments
-*    is a bit less than the extra redundancy added, we are likely to be able to recover the original
+*    is reasonably less than the extra redundancy added, we are likely to be able to recover the original
 *    patch file.
 * 10. The device receives all or some (uncoded) fragments 1 thru M, making a note of which fragment numbers 
 *    were received in R, and storing the fragments in order in storage memory S
 * 11. If all M fragments are received, the process can stop, since the original data is now fully known.
 * 12. If some of the M fragments are not received, the device must then receive the (N-M) coded fragments
 * 13. For each of the (n)th coded fragments that arrives, the device will:
-*			a) Retrieve the combination (C) of the indexs of the uncoded messages used to build this (n)th 
-*			b) XOR all indexes in storage S with the fragment n 
-*			c) Store this XORd value to the first index not yet marked as received
-*			d) If only one index was not received, we now have recreated it, so mark it as received in R
-*			e) But if more than one index was not received, create a parity line A (???)
+*			a) Retrieve a bit array of the combination (C) of the indexes of the uncoded messages
+               used to build this (n)th 
+*			b) Create a bit array (B) by XORing B = C ^ R of fragments we have received that are part of 
+*              the current coded fragments "recipe" in C
+*			c) Create the bit array (A) by XORing A = B ^ C of fragments that we are missing, but which are
+*              needed to make the current coded fragment
+*			d) If the number of bits in A is not one, discard this fragment and wait for the next in 13.
+*			else...
+*			e) If the number of bits set in A is exactly one, we can recreate on the missing uncoded
+*              fragments by XORing the current coded fragment with all the received fragments given 
+*              by the indexes of B which are set to one.
+*	        f) The set the bit in R corresponing to the bit in A, and store the XORd fragment to the 
+*              store at the position correpsonding to the bit in A.
+*           g) If all M bits of R are set to one, the process is complete, other wise continue till the 
+*              last fragment is received.
+* 
+
 */
+
+
+
 
 
 const int FAIL = -1;
 const int SUCCESS = 0;
+const int VERBOSE = 1;
+const int QUIET = 2;
+
+const int DECODING_COMPLETE = 3;
+const int DECODING_NOT_YET_COMPLETE = 4;
+
+const int PARITY_LINE_FRACTION = 4;
+bool      trace_on = false;
 
 /* **************************************************************************************
 *										GLOBAL VARS
 *  *************************************************************************************/
 frag_sesh_t fs = { 0 };
 uint8_t	  packet_delivery_rate = 0;
-uint8_t* storage;
+uint8_t*  storage;
 
-bit_array_t* tally_of_rxd_frags;
-bit_array_t C = { 0 };
-uint8_t* A;
+bit_array_t A = { 0 };	// indices of missing, but required fragment(s) for the current coded fragment
+bit_array_t B = { 0 };	// indices of received & required fragment(s) for the current coded fragment
+bit_array_t C = { 0 };  // indices of all required fragment(s) for the current coded fragment
+bit_array_t R = { 0 };	// indices of uncoded fragments received/reconstructed so far
+
 
 
 /* **************************************************************************************
 *											MAIN 
 *  *************************************************************************************/ 
 int main(int argc, char* argv[]) {
-	int		  i;
+	int		  i,j;
 	int		  ret = FAIL;
 	
 	uint8_t*  patch_data = NULL;
 	uint8_t*  frag = NULL;
 	uint8_t*  FEC_data = NULL;
 	uint16_t  packet_num = 0;
+	uint16_t  max_loops = 0;
+	int		  decoding_state = DECODING_NOT_YET_COMPLETE;
+
+	
 
 	
 	// check arguments and populate fragmentation session structure 'fs'
-	check_arguments(argc, argv);
+	ret = check_arguments(argc, argv);
+	if (ret == VERBOSE)
+		trace_on = true;
+	else if (ret == FAIL)
+		goto end;
+
+
 	
 	// create patch data (with padding)
 	patch_data = (uint8_t*)malloc(sizeof(uint8_t) * fs.M * fs.frag_size);
@@ -121,7 +158,7 @@ int main(int argc, char* argv[]) {
 	memset(FEC_data, 0x00, (size_t)(fs.N * fs.frag_size));
 
 	// encode the patch data, expanding it with redundancy in (N-M) extra fragments
-	encode(patch_data, FEC_data, fs.N, fs.M, fs.frag_size);
+	encode(patch_data, FEC_data);
 
 	// memory to store a received fragment for processing
 	frag = (uint8_t*) malloc(sizeof(uint8_t) * fs.frag_size);
@@ -135,22 +172,31 @@ int main(int argc, char* argv[]) {
 	if (init_decoder() == FAIL) goto end;
 	
 	// receive the messages (with some getting lost on the way) and decode one-by-one
-	while (packet_num < (fs.N)) {
+	while (packet_num < (fs.N)  && decoding_state == DECODING_NOT_YET_COMPLETE) {
 		// simulate a lossy LoRa radio link
 		packet_num = receive_next_fragment(frag, FEC_data);
 			
 		// and pass each received message to the decoder as they arrive
-		decode_fragment(frag, packet_num);
+		decoding_state = decode_fragment(frag, packet_num);
+		max_loops++;
 	} 
-	final_step();
+	// print out storage
+	TRACE("\n\rStored Fragments:\n\r");
+	for (i = 0; i < fs.M; i++) {
+		frag = fetch_fragment(i);
+		for (j = 0; j < fs.frag_size; j++) {
+			TRACE("%1.2x ", *(frag + j));
+		}
+		TRACE("\n\r");
+	}
 
 
 	// compare the received fragments (1..M) with the original data!
 	if (is_decoded_same_as_original(patch_data) == true) {
-		printf("\n\r *** Patch file received OK :-) ***\n\r");
+		printf("\n\r\t\t *** Patch file received OK :-) ***\n\r\n\r");
 	}
 	else {
-		printf("\n\r *** Patch file NOT received OK :-( ***\n\r");
+		printf("\n\r\t\t *** Patch file NOT received OK :-( ***\n\r\n\r");
 	}
 	
 	ret = SUCCESS;
@@ -160,13 +206,15 @@ end:
 	free(patch_data);
 	free(frag);
 	free(FEC_data);
-	delete_bit_array(&C);
-	delete_bit_array(tally_of_rxd_frags);
-	delete_storage();
+	free_bit_array(&A);
+	free_bit_array(&B);
+	free_bit_array(&C);
+	free_bit_array(&R);
+	free_storage();
 
 
 	// say goodbye
-	printf("\n\rexiting: %i\n\r", ret);
+	TRACE("\n\rexiting: %i\n\r", ret);
 	
 	return ret;
 }

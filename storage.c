@@ -39,7 +39,7 @@ uint8_t* fetch_fragment(uint16_t index) {
 	return frag_start;
 }
 
-void delete_storage() {
+void free_storage() {
 	assert(storage != NULL);
 	free(storage);
 }
