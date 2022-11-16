@@ -2,10 +2,10 @@
 #include "parity_matrix.h"
 #include "constants.h"
 #include "frag_sesh.h"
-#include <time.h>
-#include <stdio.h>
-#include <assert.h>
-#include <string.h>
+#include <stdio.h>			// printf
+#include <assert.h>			// assert
+#include <string.h>			// memcpy
+#include <stdlib.h>			// rand
 
 /* **************************************************************************************
 *										GLOBAL VARS
@@ -26,14 +26,11 @@ uint16_t receive_next_fragment(uint8_t* frag_out, uint8_t* encoded_patch_data) {
 	static uint32_t rand_num;
 
 	bool packet_lost;
-	time_t seconds_since = time(NULL);
 	int i;
-
 	
 	// initial seed on first entry
 	if (packet_count == 0) {
-		// just some made up combination based on seconds since 1st Jan 1970
-		rand_num = prbs23((uint32_t)seconds_since / 137 + (uint32_t)seconds_since % 86400);
+		rand_num = rand() % (2 ^ 23 - 1);
 	}
 
 next_packet:

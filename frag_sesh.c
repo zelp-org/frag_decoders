@@ -17,7 +17,7 @@ void calc_N(struct frag_sesh_t* fs) {
 }
 
 void print_session(void) {
-	TRACE("\n\rM: %u N: %u Padding: %u Data length: %u Fragment Size: %u PDR: %u Passes: %u \
+	printf("\n\rM: %u N: %u Padding: %u Data length: %u Fragment Size: %u PDR: %u Passes: %u \
 Parity Fraction: %u\n\r",\
 		fs.M, fs.N, fs.padding_bytes, fs.data_length, fs.frag_size, fs.pdr, fs.passes, fs.parity_fraction);
 }
